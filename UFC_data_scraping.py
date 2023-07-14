@@ -1,21 +1,22 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.11.2
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.14.6
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
 
-# + [markdown] colab_type="text" id="view-in-github"
+# %% [markdown] colab_type="text" id="view-in-github"
 # <a href="https://colab.research.google.com/github/tylerlum/ufc_automated_scoring_system/blob/main/UFC_Automated_Scoring_System.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
 
-# + [markdown] id="TPiJGcdUYaoU"
+# %% [markdown] id="TPiJGcdUYaoU"
 # # UFC Data Scraping
 #
 # The goal of this notebook is to:
@@ -25,34 +26,39 @@
 #
 # Functional as of April 2021
 
-# + [markdown] id="Qx-IhTkrwliQ"
+# %% cellView="form" id="tYkaAlJNfhul"
+# NUM_EVENTS_INPUT = "All"  #@param {type:"string"}
+NUM_EVENTS_INPUT = "10"  #@param {type:"string"}
+DATA_MODE_INPUT = "Round by Round"  #@param {type:"string"} #changed from Summary
+
+# %%
+NUM_EVENTS = None if NUM_EVENTS_INPUT == "All" else int(NUM_EVENTS_INPUT)
+ROUND_BY_ROUND = (DATA_MODE_INPUT == "Round by Round")
+
+# %% [markdown] id="7897ryXiaoCv"
+# ## Get information about all fighters
+
+# %% id="ioQESt2oZPXz"
+import pandas as pd
+from tqdm import tqdm
+import numpy as np
+import re
+from string import ascii_lowercase
+from bs4 import BeautifulSoup
+import requests
+
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+
+
+# %% [markdown] id="Qx-IhTkrwliQ"
 # ## Set parameters for dataset creation
 #
 # NUM_EVENTS_INPUT: Integer number of UFC events to get fights from or "All" for all events. There are about 10 fights per event.
 #
 # DATA_MODE_INPUT: Either "Summary" or "Round by Round". Either get data with columns that are summaries of the whole fight, or summaries round-by-round (more columns).
 
-# + cellView="form" id="tYkaAlJNfhul"
-# NUM_EVENTS_INPUT = "All"  #@param {type:"string"}
-NUM_EVENTS_INPUT = "20"  #@param {type:"string"}
-DATA_MODE_INPUT = "Summary"  #@param {type:"string"}
-# -
-
-NUM_EVENTS = None if NUM_EVENTS_INPUT == "All" else int(NUM_EVENTS_INPUT)
-ROUND_BY_ROUND = (DATA_MODE_INPUT == "Round by Round")
-
-# + [markdown] id="7897ryXiaoCv"
-# ## Get information about all fighters
-
-# + id="ioQESt2oZPXz"
-import pandas as pd
-from tqdm import tqdm
-import numpy as np
-import re
-from string import ascii_lowercase
-
-
-# + id="0WtkXEs0LNry"
+# %% id="0WtkXEs0LNry"
 def get_all_fighters():
     '''Get pandas table of all UFC fighters (Name, Height, Weight, Reach, Record, etc.)'''
     all_fighters_tables = []
@@ -65,31 +71,33 @@ def get_all_fighters():
     return all_fighters
 
 
-# + colab={"base_uri": "https://localhost:8080/", "height": 216} id="AkCCSiuUa4lu" outputId="de1fcb58-1d27-4f12-8dd7-5644ddfb2ec6"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 216} id="AkCCSiuUa4lu" outputId="de1fcb58-1d27-4f12-8dd7-5644ddfb2ec6"
 ALL_FIGHTERS = get_all_fighters()
 ALL_FIGHTERS.head()
 
-# + colab={"base_uri": "https://localhost:8080/"} id="Zoayc5Ad3tKm" outputId="629230e2-28a8-4ff8-d72f-1fa366f4f2fb"
+# %% colab={"base_uri": "https://localhost:8080/"} id="Zoayc5Ad3tKm" outputId="629230e2-28a8-4ff8-d72f-1fa366f4f2fb"
 ALL_FIGHTERS.dtypes
 
-# + [markdown] id="bIDzcIHz3mpC"
+# %% [markdown] id="bIDzcIHz3mpC"
 # ## Clean fighter data
 #
 # TODO: Convert height, weight, reach to floats.
 
-# + colab={"base_uri": "https://localhost:8080/", "height": 198} id="gdNWtyaB5cTi" outputId="db88f028-18b9-460d-e998-3a4c887c085f"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 198} id="gdNWtyaB5cTi" outputId="db88f028-18b9-460d-e998-3a4c887c085f"
 ALL_FIGHTERS = ALL_FIGHTERS.replace("^-+", np.nan, regex=True)  # Replace -- and --- with nan
 ALL_FIGHTERS.dropna(subset=["First", "Last"], how='all')  # Remove rows with no name
 ALL_FIGHTERS.head()
 
 
-# + [markdown] id="HBvmzviJ625s"
+# %% [markdown] id="HBvmzviJ625s"
 # ## Helper functions
 
-# + id="_KC8TRhZSW58"
+# %% id="_KC8TRhZSW58"
 def get_fighters(fighters_string):
     '''Parses string containing two fighter names. Uses ALL_FIGHTERS global to remove ambiguity in parsing. Returns each fighter name
        Eg. "Robert Whittaker Kelvin Gastelum" => ("Robert Whittaker", "Kelvin Gastelum")'''
+    first_fighter = ""
+    second_fighter = ""
     for i, row in ALL_FIGHTERS.iterrows():
         fighter_name = f'{row["First"]} {row["Last"]}'
         if fighters_string.startswith(fighter_name):
@@ -103,20 +111,20 @@ def remove_duplicates_keep_order(list_):
     return list(dict.fromkeys(list_))
 
 
-# + [markdown] id="hYGOutwI-g9H"
+# %% [markdown] id="hYGOutwI-g9H"
 # ## Get a list of all UFC events
 
-# + id="UqZSSQ8r-rMm"
+# %% id="UqZSSQ8r-rMm"
 from urllib.request import urlopen
 from string import ascii_uppercase
 from dateutil import parser
 from datetime import datetime
 
-# + id="t-X7tWV_NiBo"
+# %% id="t-X7tWV_NiBo"
 ALL_PAST_EVENTS_URL = "http://ufcstats.com/statistics/events/completed?page=all"
 
 
-# + id="JOvgx_9Z1SOv"
+# %% id="JOvgx_9Z1SOv"
 def get_all_events(all_past_events_url):
     '''Takes in URL to all past events. Returns list of urls, each one representing a UFC event'''
     all_past_events_html = urlopen(all_past_events_url).read().decode("utf-8")
@@ -132,24 +140,81 @@ def get_all_events(all_past_events_url):
     return all_urls
 
 
-# + colab={"base_uri": "https://localhost:8080/"} id="zzxASuh8_Vnh" outputId="74c88906-ed19-4754-9b28-dde55d6bba45"
+# %% colab={"base_uri": "https://localhost:8080/"} id="zzxASuh8_Vnh" outputId="74c88906-ed19-4754-9b28-dde55d6bba45"
 # Events
 ALL_EVENT_URLS = get_all_events(ALL_PAST_EVENTS_URL)
 print(f"Got {len(ALL_EVENT_URLS)} events")
 print()
 
 print("Removing the most recent event, since it might not have happened yet")
+#ALL_EVENT_URLS = ALL_EVENT_URLS[1:] CHANGE ME BACK LATER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ALL_EVENT_URLS = ALL_EVENT_URLS[1:]
 print(f"Now got {len(ALL_EVENT_URLS)} events")
 print(ALL_EVENT_URLS)
 
 
-# + [markdown] id="QoU8LAPK_dbQ"
+# %% [markdown]
+# ## Get a list of all UFC events from MMA Decisions
+
+# %%
+def get_all_mma_decision_events():
+    '''Takes in URL to all past events, goes through each year and returns list if urls, each representing 
+        a past event from MMA Decicions from newest to oldest'''
+    all_href_event_links = []
+    for year in range(2023, 1994, -1):
+        all_yearly_events_url = f"http://mmadecisions.com/decisions-by-event/{year}/"
+        response = requests.get(all_yearly_events_url)
+        soup = BeautifulSoup(response.content, "html.parser")
+        links = soup.find_all("a", href=lambda href: href and "UFC" in href)
+        href_list = [link["href"] for link in links]
+        all_href_event_links.extend(href_list)
+    #all_href_event_links = list(chain.from_iterable(all_href_event_links))
+    return all_href_event_links
+
+
+# %% [markdown]
+# ## Get a list of UFC fights from MMA Decisions
+
+# %%
+def get_all_mma_decision_fights_in_event(past_event_url):
+    '''Takes in a single URL to a past MMA Decision event.
+        return fight_urls'''
+    response = requests.get(past_event_url)
+    soup = BeautifulSoup(response.content, "html.parser")
+    links = soup.find_all("a", href=lambda href: href and "decision/" in href)
+    href_list = [link["href"] for link in links]
+    return href_list
+
+
+# %%
+def get_all_fights_in_mma_decision(all_mma_event_urls, num_events=None):
+    '''Takes in list of URLs to past events. Return list: urls representing a UFC fight.
+    Set num_events to be the number of events to get fights from. Set to None if want all.'''
+    if num_events is None:
+        num_events = len(all_mma_event_urls)
+    
+    all_fight_urls = []
+    for i, event_url in enumerate(tqdm(all_mma_event_urls[:num_events])):
+        # For each event, get the fight urls and winners
+        event_url = "http://mmadecisions.com/" + event_url
+        fight_urls = get_all_mma_decision_fights_in_event(event_url)
+        all_fight_urls.extend(fight_urls)
+
+    return all_fight_urls
+
+
+# %%
+all_event_urls = get_all_mma_decision_events()
+all_fights_urls = get_all_fights_in_mma_decision(all_event_urls, NUM_EVENTS)
+all_fights_urls
+
+
+# %% [markdown] id="QoU8LAPK_dbQ"
 # ## Get a list of UFC fights
 #
 # TODO: Right now only sees if result is win. Else sets winner to None. See if this can be improved.
 
-# + id="2nDi4mo6CLn_"
+# %% id="2nDi4mo6CLn_"
 def get_all_fights_in_event(past_event_url, get_results=False):
     '''Takes in a single URL to a past event.
        If get_results=True, returns fight_urls, winners, methods
@@ -183,7 +248,7 @@ def get_all_fights_in_event(past_event_url, get_results=False):
         return fight_urls
 
 
-# + id="7_pNUnyMPxkM"
+# %% id="7_pNUnyMPxkM"
 def get_all_fights(all_event_urls, num_events=None):
     '''Takes in list of URLs to past events. Returns 3 lists: urls, winners, methods, each representing a UFC fight.
        Set num_events to be the number of events to get fights from. Set to None if want all.'''
@@ -200,7 +265,7 @@ def get_all_fights(all_event_urls, num_events=None):
     return all_fight_urls, all_winners, all_methods
 
 
-# + colab={"base_uri": "https://localhost:8080/"} id="Q66lyNtAF-Vo" outputId="c7eb935e-443a-4498-8690-f09c8e8be3ab"
+# %% colab={"base_uri": "https://localhost:8080/"} id="Q66lyNtAF-Vo" outputId="c7eb935e-443a-4498-8690-f09c8e8be3ab"
 FIGHT_URLS, WINNERS, METHODS = get_all_fights(ALL_EVENT_URLS, num_events=NUM_EVENTS)
 print(f"Got {len(FIGHT_URLS)} fights")
 print(FIGHT_URLS)
@@ -211,11 +276,11 @@ assert(len(FIGHT_URLS) == len(WINNERS))
 assert(len(FIGHT_URLS) == len(METHODS))
 
 
-# + [markdown] id="CzlsyBU6DdRE"
+# %% [markdown] id="CzlsyBU6DdRE"
 # ## Get fight tables
 #
 
-# + id="zJjLUhEyDcSs"
+# %% id="zJjLUhEyDcSs"
 def get_labeled_fight_tables(fight_url):
     '''Convert fight url to dictionary of pandas tables of information.
        Before, gave a list of tables that was hard to understand.
@@ -230,32 +295,35 @@ def get_labeled_fight_tables(fight_url):
     return labeled_fight_tables
 
 
-# + id="08jcNbZaDlBE"
+# %% id="08jcNbZaDlBE"
 RAW_FIGHT_TABLES_LIST = []
 for url in tqdm(FIGHT_URLS):
     RAW_FIGHT_TABLES_LIST.append(get_labeled_fight_tables(url))
 
-# + id="c9msProI12dH"
+# %% id="c9msProI12dH"
 RAW_FIGHT_TABLES_LIST[0]['Totals'].head()
 
-# + id="5_IIeQRx13WJ"
+# %% id="5_IIeQRx13WJ"
 RAW_FIGHT_TABLES_LIST[0]['Per Round Totals'].head()
 
-# + id="b8vW4zw818TK"
+# %% id="b8vW4zw818TK"
 RAW_FIGHT_TABLES_LIST[0]['Significant Strikes'].head()
 
-# + id="LtCciS5g16MB"
+# %% id="LtCciS5g16MB"
 RAW_FIGHT_TABLES_LIST[0]['Per Round Significant Strikes'].head()
 
+# %%
+display(RAW_FIGHT_TABLES_LIST)
 
-# + [markdown] id="r6YwJd-fAOwd"
+
+# %% [markdown] id="r6YwJd-fAOwd"
 # ## Clean fight information
 #
 # Separate each fighter's information into a different column
 #
 # TODO: Lots of stuff to improve. Smarter use of Totals, round by round, and significant strikes. Can also use non integer information, total attempted strikes (not just landed), fighter information, etc. All of those being ignored right now. Find nice way to parse new information round by round. Handle no winner case better. May need to add ignore_index=True for pd.concat
 
-# + id="-PfTg13LB3ck"
+# %% id="-PfTg13LB3ck"
 def parse_string(row_string):
     '''Break string into two parts: one for fighter 0 and one for fighter 1
        Eg. 150 of 284  62 of 209 => (150 of 284, 62 of 209)'''
@@ -267,7 +335,7 @@ def parse_string(row_string):
     return first_fighter_stat, second_fighter_stat
 
 
-# + id="dqnRE1IfMY9k"
+# %% id="dqnRE1IfMY9k"
 def convert_to_int_or_double_if_possible(string):
     '''Convert string to int or double if possible
        If has a percent sign, tries to remove it and continue.'''
@@ -294,7 +362,7 @@ def convert_to_int_or_double_if_possible(string):
     return string
 
 
-# + id="ORlZYocyRO4M"
+# %% id="ORlZYocyRO4M"
 def process_fight(raw_fight_table):
     '''Takes in a raw, one-row pandas fight table. Returns a pandas dataframe representing the fight statistics'''    
     # Break up columns.
@@ -304,7 +372,7 @@ def process_fight(raw_fight_table):
     for column in raw_fight_table.columns:
         new_columns.append(f"Fighter 0 {column}")
         new_columns.append(f"Fighter 1 {column}")
-
+        
     # Go through each row and break up the data into the columns
     new_rows = []
     for i, row in raw_fight_table.iterrows():
@@ -345,13 +413,14 @@ def process_fight(raw_fight_table):
     # Add in names, using smarter parsing
     df = df.drop(columns=['Fighter 0 Fighter', 'Fighter 1 Fighter'])
     fighters_string = raw_fight_table["Fighter"][0]  # Only 1 row table
+    print(fighters_string)
     fighter0, fighter1 = get_fighters(fighters_string)
     df['Fighter 0 Name'] = fighter0
     df['Fighter 1 Name'] = fighter1
     return df
 
 
-# + id="5oIdF2niZpag"
+# %% id="5oIdF2niZpag"
 def process_raw_fight_tables(raw_fight_tables, winner, method, round_by_round=False):
     '''Takes in set of raw fight table (one fight), the name of the fight winner, and the method of winning. Returns a cleaned pandas table.
        Set round_by_round=True to use the round-by-round data. Otherwise, uses full fight stats.'''
@@ -377,10 +446,11 @@ def process_raw_fight_tables(raw_fight_tables, winner, method, round_by_round=Fa
             values = list(df[i].to_dict().values())
             cols = list(raw_fight_tables["Totals"].columns)
             df = pd.DataFrame([values], columns=cols)
-
+ 
             # Update columns with round number
-            new_cols = [f"Round {i+1} {c}" if c != "Fighter" else c for c in cols]
+            new_cols = [f"Round {i+1} {c}" if  c != "Fighter" else c for c in cols]
             df.columns = new_cols
+
             tables.append(process_fight(df))
         # Concatenate round-by-round horizontally, so each row is for 1 fight.
         # Then remove duplicates
@@ -429,28 +499,200 @@ def process_raw_fight_tables(raw_fight_tables, winner, method, round_by_round=Fa
     fight_table['Method'] = method
     return fight_table
 
-# + id="BUyy5MUhNTkJ"
+# %% id="BUyy5MUhNTkJ"
 FIGHT_TABLE = []
 for i in tqdm(range(len(RAW_FIGHT_TABLES_LIST))):
     FIGHT_TABLE.append(process_raw_fight_tables(RAW_FIGHT_TABLES_LIST[i], WINNERS[i], METHODS[i], round_by_round=ROUND_BY_ROUND)) 
 FIGHT_TABLE = pd.concat(FIGHT_TABLE, ignore_index=True)
 FIGHT_TABLE = FIGHT_TABLE.replace("^-+", np.nan, regex=True)  # Replace -- and --- with nan
 
-# + id="G9EhqLLcAWs-"
-FIGHT_TABLE.head()
+# %% id="G9EhqLLcAWs-"
+FIGHT_TABLE.head(11)
 
-# + id="7hQjO9B2RDoZ"
+# %% id="7hQjO9B2RDoZ"
 FIGHT_TABLE.tail()
 
+# %% [markdown]
+# ## Combine fight dataset with scorecard dataset
 
-# + [markdown] id="pCMOvzM0efI4"
+# %%
+from urllib.parse import quote
+
+def get_scorecard_information(fight_url, winner_index, fighter_0_name):
+    '''Takes in a mma decision fight url and winner, returns a table of the scorecard information'''
+    #handling links with latin characters such as é
+    try:
+        tables = pd.read_html(fight_url)
+    except UnicodeEncodeError:
+        try:
+            print(fight_url)
+            encoded_url = quote(fight_url, safe=':/\r\n')
+            print(encoded_url)
+            tables = pd.read_html(encoded_url, encoding="utf-8")
+        except UnicodeEncodeError:
+            print("error")
+    
+    labeled_scorecard_tables = {
+        'Score Card 1': tables[6],
+        'Score Card 2': tables[7],
+        'Score Card 3': tables[8]
+    }
+    
+    full_fight_scorecards_table = []
+    winner = ""
+    loser = ""
+    
+    #assign fighters as fighter_0 and fighter_1 to match fight_table names
+    if winner_index == 0:
+        winner = "0"
+        loser = "1"
+    elif winner_index == 1:
+        winner = "1"
+        loser = "0"
+    else:
+        name = fighter_0_name.split()
+        fighter_0_last_name = ' '.join(name[1:])
+        sc_column_0_fighter = tables[6].iloc[1].values[1]
+        
+        if fighter_0_last_name == sc_column_0_fighter:
+            winner = "0"
+            loser = "1"
+        else:
+            winner = "1"
+            loser = "0"
+    
+    for n in range(1, 4):
+        round_tables = []
+        
+        for i, row in labeled_scorecard_tables[f"Score Card {n}"].iterrows():
+            if i < 2:  # Skip column names
+                continue
+            
+            df = pd.DataFrame(row)
+            values = list(df[i].to_dict().values())
+            values.pop(0)
+            cols = [f"SC {n}", f"SC {n}"]
+            df = pd.DataFrame([values], columns=cols)
+            
+            #update columns with round numbers
+            new_cols = [f"Round {i-1} {c}" if c != "Fighter" else c for c in cols]
+            new_columns = [f"Fighter {winner} {new_col}" if i == 0 else f"Fighter {loser} {new_col}" for i, new_col in enumerate(new_cols)]
+            
+            df.columns = new_columns
+            round_tables.append(df)
+        
+        new_cols = [f"Fighter {winner} SC {n} Total", f"Fighter {loser} SC {n} Total"]
+        round_tables[-1].columns = new_cols
+        
+        totals_df = pd.concat(round_tables, axis=1)
+        totals_df = totals_df.loc[:, ~totals_df.columns.duplicated()]
+        full_fight_scorecards_table.append(totals_df)
+    
+    full_fight_scorecards_table = pd.concat(full_fight_scorecards_table, axis=1)
+    full_fight_scorecards_table = full_fight_scorecards_table.loc[:, ~full_fight_scorecards_table.columns.duplicated()]
+    full_fight_scorecards_table = full_fight_scorecards_table.sort_index(axis=1)
+    
+    return full_fight_scorecards_table
+
+
+# %%
+def combine_fight_table_with_scorecards(fight_table, scorecard_fights_urls):
+    '''Takes a table of fights and list or corresponding mmadecision urls, 
+    returns a table including all fights with scores except incomplete fights'''
+    url_index = 0
+    complete_fight_table = []
+    fights = []
+    scores = []
+    decision_methods = ["U-DEC", "S-DEC", "M-DEC"]
+    for index in tqdm(range(len(fight_table))):
+        fight = fight_table.iloc[[index]]
+        #if fight['Method'] == "U-DEC" or fight['Method'] == "S-DEC" or fight['Method'] == "M-DEC":
+        if fight['Method'].isin(decision_methods).any():
+            url = "http://mmadecisions.com/"+scorecard_fights_urls[url_index]
+            scorecard_table = get_score_card_information(url, fight['Winner'].item(), fight['Fighter 0 Name'])
+            fight.reset_index(drop=True, inplace=True)
+            scorecard_table.reset_index(drop=True, inplace=True)
+            row = pd.concat([fight, scorecard_table], axis=1)
+            fights.append(row)
+            url_index = url_index + 1
+        #fight decided by knockout, submissions, etc. Skip the no contests fights
+        elif fight['Winner'].item() != "-1":
+            fight.reset_index(drop=True, inplace=True)
+            fights.append(fight)
+
+    fights = [pd.DataFrame(fight) for fight in fights]
+    complete_fight_table = pd.concat(fights, ignore_index=True)
+    complete_fight_table = complete_fight_table.loc[:,~complete_fight_table.columns.duplicated()]
+
+    return complete_fight_table
+            
+
+
+# %%
+def combine_decision_fight_table_with_scorecards(fight_table, score_urls):
+    '''Takes a table of fights and list or corresponding mmadecision urls, 
+    returns a table including all fights by decision except draws'''
+    url_index = 0
+    combined_table = []
+    fights = []
+    decision_methods = ["U-DEC", "S-DEC", "M-DEC"]
+
+    for i in tqdm(range(len(fight_table))):
+        fight_row = fight_table.iloc[[i]]
+        method = fight_row['Method'].item()
+        winner = fight_row['Winner'].item()
+        fighter_name = fight_row['Fighter 0 Name']
+        
+        #skip no contest fights
+        if winner == "-1" and method not in decision_methods:
+            continue
+        
+        #skip completed fights that end in draw
+        elif winner == "-1" and method in decision_methods:
+            url_index += 1
+            
+        #only add fights completed fights by decision
+        elif method in decision_methods:
+            url = "http://mmadecisions.com/" + score_urls[url_index]
+            score_card = get_scorecard_information(url, winner, fighter_name)
+            fight_row.reset_index(drop=True, inplace=True)
+            score_card.reset_index(drop=True, inplace=True)
+            combined_row = pd.concat([fight_row, score_card], axis=1)
+            fights.append(combined_row)
+            url_index += 1
+
+    fights = [pd.DataFrame(fight) for fight in fights]
+    combined_table = pd.concat(fights, ignore_index=True)
+    combined_table = combined_table.loc[:, ~combined_table.columns.duplicated()]
+
+    return combined_table
+
+
+# %%
+print(len(all_fights_urls))
+print(len(FIGHT_TABLE))
+print(FIGHT_TABLE.shape)
+import pandas as pd
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+from IPython.display import display
+
+tb = combine_decision_fight_table_with_scorecards(FIGHT_TABLE,all_fights_urls)
+display(tb)
+
+
+# %%
+FIGHT_TABLE = tb
+
+
+# %% [markdown] id="pCMOvzM0efI4"
 # ## Augment dataset by flipping around columns
 #
 # The system should work the same no matter what order we pass in the fighters. Let fighters be A and B. We want
 #
 # winner(fighter0=A, fighter1=B) = winner(fighter0=B, fighter1=A)
 
-# + id="kM2b_cAif7rM"
+# %% id="kM2b_cAif7rM"
 def create_flipped_table(table):
     '''Rearranges columns of table so that each fight has two rows. Let fighters be A and B.
        One row has (Fighter 0 = A, Fighter 1 = B). One row has (Fighter 0 = B, Fighter 1 = A)
@@ -476,48 +718,51 @@ def create_flipped_table(table):
     return flipped_table
 
 
-# + id="KQcGgKW6k-ba"
+# %% id="KQcGgKW6k-ba"
 def add_rows_of_flipped_columns(table):
     flipped_table = create_flipped_table(table)
     new_table = pd.concat([table, flipped_table])
     return new_table
 
 
-# + id="HnwZdNiplLF3"
+# %% id="HnwZdNiplLF3"
 FULL_FIGHT_TABLE = add_rows_of_flipped_columns(FIGHT_TABLE)
 
-# + id="PlnOp-fbjknE"
+# %% id="PlnOp-fbjknE"
 FULL_FIGHT_TABLE.head()
 
-# + [markdown] id="gu7-RmZOkP68"
+# %% [markdown] id="gu7-RmZOkP68"
 # ## Example of augmented data
 
-# + id="PHsGqr0_joHn"
+# %% id="PHsGqr0_joHn"
 FULL_FIGHT_TABLE[(FULL_FIGHT_TABLE['Fighter 0 Name'] == "Robert Whittaker") & (FULL_FIGHT_TABLE['Fighter 1 Name'] == "Kelvin Gastelum")]
 
-# + id="samSx7Olj3vQ"
+# %% id="samSx7Olj3vQ"
 FULL_FIGHT_TABLE[(FULL_FIGHT_TABLE['Fighter 1 Name'] == "Robert Whittaker") & (FULL_FIGHT_TABLE['Fighter 0 Name'] == "Kelvin Gastelum")]
 
-# + [markdown] id="3OOgguk84RJl"
+# %% [markdown] id="3OOgguk84RJl"
 # ## Additional data cleaning
 #
 # TODO: See if something better than replacing nan with 0. See if something better for labels than 0 and 1. Could remove fights with no winner, or handle them differently. Could remove fights that don't go to decision by removing based on Method.
 
-# + id="RIS0yarnbTmj"
-X = FIGHT_TABLE.drop(['Winner', 'Fighter 0 Name', 'Fighter 1 Name', 'Method'], axis=1).fillna(0)
+# %% id="RIS0yarnbTmj"
+X = FIGHT_TABLE.drop(['Winner', 'Fighter 0 Name', 'Fighter 1 Name', 'Method'], axis=1).fillna(0).replace('-', 0)
 y = FIGHT_TABLE[['Winner']]
 
-# + id="QxOiDLXHfgDx"
+# %% id="QxOiDLXHfgDx"
 X.head()
 
-# + id="N5qqnw6Efh8K"
+# %% id="N5qqnw6Efh8K"
 y.head()
 
-# + [markdown] id="JwvrHfOCf1mh"
+# %%
+display(X)
+
+# %% [markdown] id="JwvrHfOCf1mh"
 # ## Setup train/validate/test split
 # Can't blindly use full fight table train/validate/test split, because the augmented data must stay together. If in train we know winner(A, B) = A, then we don't want to have winner(B, A) in the validation/test set.
 
-# + id="CwlwAWNRcwJ1"
+# %% id="CwlwAWNRcwJ1"
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
 X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.33, random_state=0)
@@ -525,19 +770,19 @@ X_train, y_train = add_rows_of_flipped_columns(X_train), add_rows_of_flipped_col
 X_valid, y_valid = add_rows_of_flipped_columns(X_valid), add_rows_of_flipped_columns(y_valid)
 X_test, y_test = add_rows_of_flipped_columns(X_test), add_rows_of_flipped_columns(y_test)
 
-# + id="aFmWIOydoJXd"
+# %% id="aFmWIOydoJXd"
 # Expect equal number of examples in Fighter 0 as Fighter 1
 assert(len(y_train[y_train['Winner'] == 0]) == len(y_train[y_train['Winner'] == 1]))
 assert(len(y_valid[y_valid['Winner'] == 0]) == len(y_valid[y_valid['Winner'] == 1]))
 assert(len(y_test[y_test['Winner'] == 0]) == len(y_test[y_test['Winner'] == 1]))
 
-# + id="jekwTdNAk3rE"
+# %% id="jekwTdNAk3rE"
 X_train.head()
 
-# + id="BUeeqFtHpZQw"
+# %% id="BUeeqFtHpZQw"
 y_train.head()
 
-# + id="75PnIBkYpabr"
+# %% id="75PnIBkYpabr"
 print(f"X_train.shape = {X_train.shape}")
 print(f"X_valid.shape = {X_valid.shape}")
 print(f"X_test.shape = {X_test.shape}")
@@ -545,13 +790,13 @@ print(f"y_train.shape = {y_train.shape}")
 print(f"y_valid.shape = {y_valid.shape}")
 print(f"y_test.shape = {y_test.shape}")
 
-# + [markdown] id="ARUH8kxCbJpG"
+# %% [markdown] id="ARUH8kxCbJpG"
 # ## ML Models
 
-# + id="0_v4cnEFbKp3"
+# %% id="0_v4cnEFbKp3"
 from sklearn.ensemble import RandomForestClassifier
 
-# + id="6gOrDS8AbPqM"
+# %% id="6gOrDS8AbPqM"
 # Train
 clf = RandomForestClassifier(max_depth=5, random_state=0)
 clf.fit(X_train, y_train)
@@ -562,14 +807,14 @@ accuracy_valid = clf.score(X_valid, y_valid)
 print(f"accuracy_train = {accuracy_train}")
 print(f"accuracy_valid = {accuracy_valid}")
 
-# + id="dn1Njq7ecfAT"
+# %% id="dn1Njq7ecfAT"
 import matplotlib.pyplot as plt
 
 # Visualize importances
 plt.rcParams.update({'font.size': 8})
 plt.barh(X_train.columns, clf.feature_importances_)
 
-# + id="GifEEZiTq2yL"
+# %% id="GifEEZiTq2yL"
 # MLP
 from sklearn.neural_network import MLPClassifier
 
@@ -579,7 +824,7 @@ accuracy_valid = clf.score(X_valid, y_valid)
 print(f"accuracy_train = {accuracy_train}")
 print(f"accuracy_valid = {accuracy_valid}")
 
-# + id="r6tiCNo3rEE0"
+# %% id="r6tiCNo3rEE0"
 # SVM
 from sklearn.svm import SVC
 
@@ -589,7 +834,7 @@ accuracy_valid = clf.score(X_valid, y_valid)
 print(f"accuracy_train = {accuracy_train}")
 print(f"accuracy_valid = {accuracy_valid}")
 
-# + id="KNxPPw2DrbpW"
+# %% id="KNxPPw2DrbpW"
 # FFN
 import tensorflow as tf
 
@@ -602,55 +847,66 @@ model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 tf.keras.utils.plot_model(model, show_shapes=True, rankdir="LR")
 
-# + id="agRwGSv2IEKa"
+# %% id="agRwGSv2IEKa"
 model.summary()
 
-# + id="Wo9gE7_HtQhl"
+# %%
+X_train = np.asarray(X_train).astype('float32')
+y_train = tf.cast(y_train, dtype=tf.int32)
+X_valid = np.asarray(X_valid).astype('float32')
+y_valid = tf.cast(y_valid, dtype=tf.int32)
+
+# %% id="Wo9gE7_HtQhl"
 model.fit(X_train, y_train, epochs=100, validation_data=(X_valid, y_valid))
 
-# + id="RWTGwJUVtalk"
+# %% id="RWTGwJUVtalk"
 model.evaluate(X_train, y_train)
 model.evaluate(X_valid, y_valid)
 
-# + [markdown] id="ZOwm0hZTxZyr"
+# %% [markdown] id="ZOwm0hZTxZyr"
 # ## Test out model manually
 
-# + id="OWIypYX-uryi"
+# %% id="OWIypYX-uryi"
 idx = 6
 
-# + id="ofKgNtPPuC0V"
+# %% id="ofKgNtPPuC0V"
 X_test.iloc[idx]
 
-# + id="4tEAEW59ulsz"
+# %% id="4tEAEW59ulsz"
 # 0 means fighter 0 won. 1 means fighter 1 won.
 y_test.iloc[idx]
 
-# + id="67EbW0E1uXGi"
+# %% id="67EbW0E1uXGi"
 X_test.shape
 
-# + id="3FWZP5LfuYYJ"
+# %% id="3FWZP5LfuYYJ"
 X_test.iloc[idx].shape
 
-# + id="W19rlXXouGfs"
+# %%
+X_test = np.asarray(X_test).astype('float32')
+X_test = pd.DataFrame(X_test)
+
+# %% id="W19rlXXouGfs"
 model.predict(np.expand_dims(X_test.iloc[idx], 0))
 
-# + [markdown] id="ZOwm0hZTxZyr"
+# %% [markdown] id="ZOwm0hZTxZyr"
 # ## Save data
 #
 # Store beginning file parameters.
 # Use current date and time to save files uniquely.
 
-# +
+# %%
 from datetime import datetime
 
 now = datetime.now()
-dt_string = now.strftime("%d-%m-%Y_%H:%M:%S")
+dt_string = now.strftime("%d-%m-%Y_%Hh%Mm%Ss")
 print("dt_string =", dt_string)	
-# -
 
+# %%
 parameters_string = f"NUM_EVENTS_{NUM_EVENTS_INPUT}_DATA_MODE_{DATA_MODE_INPUT}"
 print("parameters_string =", parameters_string)	
 
+# %%
 import pickle
 filename1 = f"FULL_FIGHT_TABLE_{parameters_string}_{dt_string}.csv"
 filename2 = f"FIGHT_TABLE_{parameters_string}_{dt_string}.csv"
@@ -663,20 +919,26 @@ ALL_FIGHTERS.to_csv(filename3, index=False)
 with open(filename4, 'wb') as handle:
     pickle.dump(RAW_FIGHT_TABLES_LIST, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+# %%
 new = pd.read_csv(filename1)
 
+# %%
 new
 
+# %%
 with open(filename4, 'rb') as pickle_file:
     new2 = pickle.load(pickle_file)
 
+# %%
 len(new2[0])
 
 
+# %% [markdown]
 # ## Experimental: Get detailed fighter information
 #
 # TODO: Get more detailed information about fighters, so we can change the task to fight prediction using fighter stats only. http://ufcstats.com/statistics/fighters?char=a&page=all has little information compared to http://ufcstats.com/fighter-details/33a331684283900f. Still lots to improve. Better features like strikes per minute. Handling nans better. Handling non win/losses better.
 
+# %%
 def get_all_fighters_detailed():
     '''Get pandas table with detailed information about all UFC fighters (KO's, strikes, etc.)'''
     fighter_detailed_tables = []
@@ -756,10 +1018,12 @@ def get_all_fighters_detailed():
     return all_fighters
 
 
+# %%
 x = get_all_fighters_detailed()
 
+# %%
 x.head()
 
+# %%
 
-
-
+# %%
